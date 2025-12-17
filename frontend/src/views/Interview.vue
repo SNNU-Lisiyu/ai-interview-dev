@@ -74,6 +74,20 @@
             <el-icon class="is-loading"><Loading /></el-icon> 思考中...
           </span>
           <span v-else class="status-text ready">请回答问题</span>
+          
+          <div class="voice-selector">
+            <el-select v-model="selectedVoice" placeholder="选择音色" size="small" style="width: 140px;">
+              <template #prefix>
+                <el-icon><Setting /></el-icon>
+              </template>
+              <el-option
+                v-for="item in ttsVoices"
+                :key="item.value"
+                :label="item.name"
+                :value="item.value"
+              />
+            </el-select>
+          </div>
         </div>
         <div class="action-buttons">
           <el-button type="warning" circle size="large" @click="handleReset">
@@ -101,7 +115,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Camera, Microphone, Check, Loading, DataLine, RefreshRight } from '@element-plus/icons-vue'
+import { Camera, Microphone, Check, Loading, DataLine, RefreshRight, Setting } from '@element-plus/icons-vue'
 import { interviewState, resetInterviewState } from '../store/interviewState'
 import aiAvatar from '../assets/ai_interviewer.png'
 import { userState } from '../store/userState'
@@ -118,6 +132,15 @@ const isProcessing = ref(false)
 const currentInput = ref('')
 const userVideoRef = ref<HTMLVideoElement | null>(null)
 // const faceCanvasRef = ref<HTMLCanvasElement | null>(null)
+
+const ttsVoices = [
+  { name: '讯飞小燕 (女声)', value: 'x4_xiaoyan' },
+  { name: '讯飞小露 (女声)', value: 'x4_yezi' },
+  { name: '讯飞许久 (男声)', value: 'aisjiuxu' },
+  { name: '讯飞小婧 (女声)', value: 'aisjinger' },
+  { name: '讯飞许小宝 (童声)', value: 'aisbabyxu' }
+]
+const selectedVoice = ref('x4_xiaoyan')
 
 const goToReport = () => {
   router.push('/candidate/report')
@@ -316,10 +339,7 @@ const speak = (text: string) => {
   // Stop previous speech if any
   ttsClient.stop()
   
-  // Use 'xiaoyan' (female) or 'aisjiuxu' (male)
-  // Since the avatar is generic AI, let's use 'xiaoyan' as default or maybe 'aisjiuxu' for a change?
-  // The prompt didn't specify, but 'xiaoyan' is the most standard.
-  ttsClient.speak(text, 'xiaoyan')
+  ttsClient.speak(text, selectedVoice.value)
 }
 
 const scrollToBottom = async () => {
@@ -738,9 +758,20 @@ onUnmounted(() => {
 }
 
 .status-bar {
-  height: 24px;
+  height: 32px;
   font-size: 14px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  width: 100%;
+  position: relative;
+}
+
+.voice-selector {
+  position: absolute;
+  right: 0;
 }
 
 .status-text {
