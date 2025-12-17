@@ -1,4 +1,5 @@
 <template>
+  <div class="beta-ribbon">PREVIEW BETA</div>
   <router-view />
 </template>
 
@@ -16,4 +17,20 @@ onMounted(() => {
 </script>
 
 <style>
+.beta-ribbon {
+  position: fixed;
+  top: 20px;
+  right: -30px;
+  background-color: #e6a23c;
+  color: #fff;
+  padding: 5px 40px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+  transform: rotate(45deg);
+  z-index: 9999;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  pointer-events: none;
+  letter-spacing: 1px;
+}
 </style>
