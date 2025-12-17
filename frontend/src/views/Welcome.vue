@@ -5,7 +5,10 @@
       <div class="nav-content">
         <div class="logo">
           <img :src="isDark ? logoLight : logoDark" alt="智面星途" class="logo-image" />
-          <span class="logo-text">智面星途</span>
+          <span class="logo-text">
+            智面星途
+            <span class="beta-badge">Beta</span>
+          </span>
         </div>
         <div class="nav-links">
           <a href="#features">核心功能</a>
@@ -30,7 +33,10 @@
     <div class="welcome-container">
       <div class="hero-section">
         <div class="hero-content">
-          <h1 class="title">智面星途 <span class="highlight">AI面试</span></h1>
+          <h1 class="title">
+            智面星途 <span class="highlight">AI面试</span>
+            <span class="beta-tag">Beta</span>
+          </h1>
           <p class="subtitle">洞察面试每一帧，赋能人才每一刻</p>
           <p class="description">
             基于多模态融合分析与讯飞星火大模型，为您提供专业、公正、深度的智能面试评测体验。
@@ -618,6 +624,38 @@ const handleRegister = () => {
 
 .cursor-pointer {
   cursor: pointer;
+}
+
+.beta-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #fff;
+  background: linear-gradient(90deg, #ffba00 0%, #ff9c00 100%);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 2px 4px rgba(255, 156, 0, 0.2);
+  position: relative;
+  top: -1px;
+}
+
+.beta-tag {
+  display: inline-block;
+  font-size: 1.2rem;
+  color: #fff;
+  background: linear-gradient(90deg, #ffba00 0%, #ff9c00 100%);
+  padding: 4px 12px;
+  border-radius: 8px;
+  margin-left: 15px;
+  vertical-align: middle;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(255, 156, 0, 0.3);
+  position: relative;
+  top: -10px;
 }
 </style>
 
