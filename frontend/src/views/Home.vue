@@ -2,7 +2,10 @@
   <div class="home-container">
     <div class="hero-section">
       <div class="hero-content">
-        <h1 class="title">智面星途 <span class="highlight">AI面试</span></h1>
+        <h1 class="title">
+          智面星途 <span class="highlight">AI面试</span>
+          <span class="beta-tag">Beta</span>
+        </h1>
         <p class="subtitle">洞察面试每一帧，赋能人才每一刻</p>
         <p class="description">
           基于多模态融合分析与讯飞星火大模型，为您提供专业、公正、深度的智能面试评测体验。
@@ -88,6 +91,22 @@
   background: linear-gradient(120deg, var(--el-color-primary) 0%, #a0cfff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.beta-tag {
+  display: inline-block;
+  font-size: 1.2rem;
+  color: #fff;
+  background: linear-gradient(90deg, #ffba00 0%, #ff9c00 100%);
+  padding: 4px 12px;
+  border-radius: 8px;
+  margin-left: 15px;
+  vertical-align: middle;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(255, 156, 0, 0.3);
+  position: relative;
+  top: -10px;
 }
 
 .subtitle {

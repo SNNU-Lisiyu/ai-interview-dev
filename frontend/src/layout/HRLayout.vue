@@ -172,6 +172,8 @@ onMounted(() => {
   font-weight: 600;
   line-height: 1.4;
   box-shadow: 0 2px 4px rgba(255, 156, 0, 0.2);
+  position: relative;
+  top: -1px; /* 微调垂直对齐 */
 }
 
 .hr-menu {
