@@ -105,7 +105,6 @@ import { Camera, Microphone, Check, Loading, DataLine, RefreshRight } from '@ele
 import { interviewState, resetInterviewState } from '../store/interviewState'
 import aiAvatar from '../assets/ai_interviewer.png'
 import { userState } from '../store/userState'
-import { IflytekTTSClient } from '../utils/iflytek'
 import { ElMessage } from 'element-plus'
 
 // AI Avatar is imported from assets
@@ -128,7 +127,7 @@ const isInterviewFinished = ref(false)
 const voices = ref<SpeechSynthesisVoice[]>([])
 let stream: MediaStream | null = null
 let recognition: any = null
-let ttsClient: IflytekTTSClient | null = null
+// let ttsClient: IflytekTTSClient | null = null
 
 // Interview Logic State
 const API_URL = '/api/deepseek/chat/completions'
@@ -305,22 +304,57 @@ const initSpeech = () => {
 }
 
 const speak = (text: string) => {
-  if (!ttsClient) {
-    ttsClient = new IflytekTTSClient()
-    ttsClient.onStart = () => { isSpeaking.value = true }
-    ttsClient.onStop = () => { isSpeaking.value = false }
-    ttsClient.onError = (err) => { 
-      console.error(err)
-      isSpeaking.value = false 
-      ElMessage.error('语音合成出错')
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel() // Stop previous
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'zh-CN'
+    
+    // Priority list for better voices
+    const preferredVoices = [
+      'Google 普通话（中国大陆）',
+      'Microsoft Xiaoxiao Online (Natural) - Chinese (Mainland)',
+      'Microsoft Yaoyao Online (Natural) - Chinese (Mainland)',
+      'Microsoft Huihui - Chinese (Simplified, PRC)',
+      'Microsoft Huihui Desktop - Chinese (Simplified, PRC)'
+    ]
+
+    let selectedVoice = null
+    
+    // 1. Try exact matches from preferred list
+    for (const name of preferredVoices) {
+      selectedVoice = voices.value.find(v => v.name === name)
+      if (selectedVoice) break
     }
+
+    // 2. If not found, try any Google Chinese voice (usually good)
+    if (!selectedVoice) {
+      selectedVoice = voices.value.find(v => v.name.includes('Google') && (v.lang.includes('zh') || v.lang.includes('CN')))
+    }
+
+    // 3. If not found, try any Microsoft Chinese voice
+    if (!selectedVoice) {
+      selectedVoice = voices.value.find(v => v.name.includes('Microsoft') && (v.lang.includes('zh') || v.lang.includes('CN')))
+    }
+
+    // 4. Fallback to any Chinese voice
+    if (!selectedVoice) {
+      selectedVoice = voices.value.find(v => v.lang.includes('zh') || v.lang.includes('CN'))
+    }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice
+    }
+
+    // Slight adjustments for naturalness (optional, but can help with robotic default voices)
+    utterance.rate = 1.0 
+    utterance.pitch = 1.0
+
+    utterance.onstart = () => { isSpeaking.value = true }
+    utterance.onend = () => { isSpeaking.value = false }
+    utterance.onerror = () => { isSpeaking.value = false }
+
+    window.speechSynthesis.speak(utterance)
   }
-  
-  // Stop previous speech if any
-  ttsClient.stop()
-  
-  // Use 'xiaoyan' (female) or 'aisjiuxu' (male)
-  ttsClient.speak(text, 'xiaoyan')
 }
 
 const scrollToBottom = async () => {
@@ -355,7 +389,7 @@ const handleReset = () => {
   resetInterviewState()
   currentInput.value = ''
   if (recognition) recognition.stop()
-  if (ttsClient) ttsClient.stop()
+  window.speechSynthesis.cancel()
   if (interviewState.messages[0]) {
     speak(interviewState.messages[0].content)
   }
