@@ -1,0 +1,55 @@
+:root {
+  --el-color-primary: #409eff;
+  --bg-color: #f5f7fa;
+  --bg-color-overlay: #ffffff;
+  --text-color-primary: #303133;
+  --text-color-regular: #606266;
+  --text-color-secondary: #909399;
+  --border-color: #dcdfe6;
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-float: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+html.dark {
+  --el-color-primary: #00f2ff; /* Neon Cyan for Tech feel */
+  --bg-color: #0f172a; /* Deep Space Blue */
+  --bg-color-overlay: #1e293b;
+  --text-color-primary: #e2e8f0;
+  --text-color-regular: #94a3b8;
+  --text-color-secondary: #64748b;
+  --border-color: #334155;
+  --shadow-card: 0 8px 32px rgba(0, 242, 255, 0.1); /* Neon glow */
+  --shadow-float: 0 4px 20px rgba(0, 0, 0, 0.5);
+  
+  /* Element Plus Overrides for Dark Mode */
+  --el-bg-color: var(--bg-color);
+  --el-bg-color-overlay: var(--bg-color-overlay);
+  --el-text-color-primary: var(--text-color-primary);
+  --el-text-color-regular: var(--text-color-regular);
+  --el-border-color: var(--border-color);
+  --el-fill-color-blank: var(--bg-color-overlay);
+}
+
+body {
+  margin: 0;
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color-primary);
+  transition: background-color 0.3s, color 0.3s;
+  min-height: 100vh;
+}
+
+html {
+  background-color: var(--bg-color);
+  transition: background-color 0.3s;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+
+
