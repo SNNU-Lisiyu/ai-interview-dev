@@ -3,8 +3,10 @@
     <el-aside width="240px" class="aside">
       <div class="logo-container">
         <img :src="isDark ? logoLight : logoDark" alt="智面星途" class="logo-image" />
-        <span class="logo-text">智面星途 <span class="logo-sub">HR端</span></span>
-        <span class="beta-badge">Beta</span>
+        <span class="logo-text">
+          智面星途 <span class="logo-sub">HR端</span>
+          <span class="beta-badge">Beta</span>
+        </span>
       </div>
       <el-menu
         :default-active="$route.path"
@@ -172,8 +174,6 @@ onMounted(() => {
   font-weight: 600;
   line-height: 1.4;
   box-shadow: 0 2px 4px rgba(255, 156, 0, 0.2);
-  position: relative;
-  top: -1px; /* 微调垂直对齐 */
 }
 
 .hr-menu {
