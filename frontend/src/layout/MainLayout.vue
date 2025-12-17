@@ -5,6 +5,7 @@
         <div class="logo-container">
           <img :src="isDark ? logoLight : logoDark" alt="智面星途" class="logo-image" />
           <span class="logo-text">智面星途</span>
+          <span class="beta-badge">Beta</span>
         </div>
         
         <el-menu
@@ -150,6 +151,21 @@ onMounted(() => {
   letter-spacing: 1px;
   position: relative;
   top: -2px;
+}
+
+.beta-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #fff;
+  background: linear-gradient(90deg, #ffba00 0%, #ff9c00 100%);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: top;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 0px;
+  box-shadow: 0 2px 4px rgba(255, 156, 0, 0.2);
 }
 
 .nav-menu {

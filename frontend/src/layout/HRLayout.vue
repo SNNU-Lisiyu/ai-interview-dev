@@ -4,6 +4,7 @@
       <div class="logo-container">
         <img :src="isDark ? logoLight : logoDark" alt="智面星途" class="logo-image" />
         <span class="logo-text">智面星途 <span class="logo-sub">HR端</span></span>
+        <span class="beta-badge">Beta</span>
       </div>
       <el-menu
         :default-active="$route.path"
@@ -157,6 +158,20 @@ onMounted(() => {
   border-radius: 4px;
   margin-left: 8px;
   vertical-align: middle;
+}
+
+.beta-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #fff;
+  background: linear-gradient(90deg, #ffba00 0%, #ff9c00 100%);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 2px 4px rgba(255, 156, 0, 0.2);
 }
 
 .hr-menu {
