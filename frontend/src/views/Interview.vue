@@ -105,7 +105,6 @@ import { Camera, Microphone, Check, Loading, DataLine, RefreshRight } from '@ele
 import { interviewState, resetInterviewState } from '../store/interviewState'
 import aiAvatar from '../assets/ai_interviewer.png'
 import { userState } from '../store/userState'
-import { IflytekClient, IflytekTTSClient } from '../utils/iflytek'
 import { ElMessage } from 'element-plus'
 
 // AI Avatar is imported from assets
@@ -128,7 +127,7 @@ const isInterviewFinished = ref(false)
 const voices = ref<SpeechSynthesisVoice[]>([])
 let stream: MediaStream | null = null
 let recognition: any = null
-let ttsClient: IflytekTTSClient | null = null
+// let ttsClient: IflytekTTSClient | null = null
 
 // Interview Logic State
 const API_URL = '/api/deepseek/chat/completions'
@@ -237,62 +236,65 @@ const initSpeech = () => {
   }
   loadVoices()
 
-  // Initialize Speech Recognition (iFlyTek)
-  recognition = new IflytekClient()
-  
-  recognition.onTextChange = (text: string, isFinal: boolean) => {
-    if (text) {
-      // iFlyTek returns partial text or final text. 
-      // Since we don't have "interim" vs "final" accumulation logic easily without complex diffing,
-      // and the simple client I wrote just emits text segments.
-      // If isFinal is true, it's a segment.
-      // If isFinal is false, it might be partial.
-      // My IflytekClient implementation emits text.
-      // Let's assume it emits the full text of the current sentence or segment.
-      // Actually, my implementation in `iflytek.ts` emits `text` from `result.text`.
-      // If `pgs` is enabled, it might be complex.
-      // But let's just append for now.
-      
-      // Wait, if I just append, I might get duplicates if I don't handle partials correctly.
-      // But my `IflytekClient` implementation:
-      // `this.onTextChange(text, isFinal);`
-      // And `text` comes from `decodeText`.
-      // If `status` is 2 (final), it's definitely a committed segment.
-      // If `status` is 0 or 1, it's partial.
-      
-      // For simplicity in this integration:
-      // If it's a final result (isFinal=true), append to currentInput.
-      // If it's partial, maybe show it?
-      // But `currentInput` is v-model.
-      
-      // Let's just append if isFinal is true for now to be safe.
-      if (isFinal) {
-        currentInput.value += text
+  // Initialize Speech Recognition
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'zh-CN'
+
+    recognition.onstart = () => {
+      isListening.value = true
+      startAnalysisSimulation()
+    }
+
+    recognition.onend = () => {
+      isListening.value = false
+      stopAnalysisSimulation()
+      // Auto restart if supposed to be listening? 
+      // For now, let's assume it stops and user has to toggle or we auto-submit if we have input.
+      if (currentInput.value.trim()) {
+        // If we have input, maybe user stopped speaking.
+        // But usually we want manual submit or silence detection.
+        // Native API stops on silence often.
       }
     }
-  }
 
-  recognition.onStart = () => { 
-    isListening.value = true 
-    startAnalysisSimulation()
-  }
-  
-  recognition.onStop = () => { 
-    isListening.value = false 
-    stopAnalysisSimulation()
-    // Auto submit if we have input and it was a voice session ending
-    if (currentInput.value.trim()) {
-      submitAnswer()
+    recognition.onresult = (event: any) => {
+      let interimTranscript = ''
+      let finalTranscript = ''
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript
+        } else {
+          interimTranscript += event.results[i][0].transcript
+        }
+      }
+      
+      // We append final transcript to current input
+      // But we need to handle the fact that currentInput might already have text.
+      // Actually, usually we just append.
+      if (finalTranscript) {
+        currentInput.value += finalTranscript
+      }
+      // We could show interimTranscript somewhere, but currentInput is v-model.
+      // If we want to show real-time, we might need to handle it carefully.
+      // For simplicity, let's just add final.
     }
-  }
-  
-  recognition.onError = (error: any) => { 
-    console.error('Speech error:', error)
-    isListening.value = false 
-    stopAnalysisSimulation()
-    // Show detailed error message
-    const msg = error instanceof Event ? '连接失败' : (error.message || error)
-    ElMessage.error(`语音识别出错: ${msg}`)
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error)
+      isListening.value = false
+      stopAnalysisSimulation()
+      if (event.error === 'not-allowed') {
+        ElMessage.error('请允许访问麦克风')
+      }
+    }
+  } else {
+    console.warn('Browser does not support Speech Recognition')
+    ElMessage.warning('您的浏览器不支持语音识别，请使用Chrome浏览器')
   }
 
   // Speak initial message if history is empty or just started
@@ -302,24 +304,23 @@ const initSpeech = () => {
 }
 
 const speak = (text: string) => {
-  if (!ttsClient) {
-    ttsClient = new IflytekTTSClient()
-    ttsClient.onStart = () => { isSpeaking.value = true }
-    ttsClient.onStop = () => { isSpeaking.value = false }
-    ttsClient.onError = (err) => { 
-      console.error(err)
-      isSpeaking.value = false 
-      ElMessage.error('语音合成出错')
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel() // Stop previous
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'zh-CN'
+    
+    // Try to find a good Chinese voice
+    const zhVoice = voices.value.find(v => v.lang.includes('zh') || v.lang.includes('CN'))
+    if (zhVoice) {
+      utterance.voice = zhVoice
     }
+
+    utterance.onstart = () => { isSpeaking.value = true }
+    utterance.onend = () => { isSpeaking.value = false }
+    utterance.onerror = () => { isSpeaking.value = false }
+
+    window.speechSynthesis.speak(utterance)
   }
-  
-  // Stop previous speech if any
-  ttsClient.stop()
-  
-  // Use 'xiaoyan' (female) or 'aisjiuxu' (male)
-  // Since the avatar is generic AI, let's use 'xiaoyan' as default or maybe 'aisjiuxu' for a change?
-  // The prompt didn't specify, but 'xiaoyan' is the most standard.
-  ttsClient.speak(text, 'xiaoyan')
 }
 
 const scrollToBottom = async () => {
@@ -354,7 +355,7 @@ const handleReset = () => {
   resetInterviewState()
   currentInput.value = ''
   if (recognition) recognition.stop()
-  if (ttsClient) ttsClient.stop()
+  window.speechSynthesis.cancel()
   if (interviewState.messages[0]) {
     speak(interviewState.messages[0].content)
   }
