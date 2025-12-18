@@ -1,4 +1,5 @@
 import CryptoJS from 'crypto-js';
+import { logger } from './logger';
 
 const APPID = '44b30254';
 const API_SECRET = 'ZmU1YzRkZjViNDEwMjhjMGE2ODk2Nzdm';
@@ -19,12 +20,12 @@ export class IflytekClient {
   constructor() {}
 
   private getAuthUrl(): string {
-    const url = 'wss://iat.xf-yun.com/v1';
-    const host = 'iat.xf-yun.com';
+    const url = 'wss://iat-api.xfyun.cn/v2/iat';
+    const host = 'iat-api.xfyun.cn';
     const date = new Date().toUTCString();
     const algorithm = 'hmac-sha256';
     const headers = 'host date request-line';
-    const signatureOrigin = `host: ${host}\ndate: ${date}\nGET /v1 HTTP/1.1`;
+    const signatureOrigin = `host: ${host}\ndate: ${date}\nGET /v2/iat HTTP/1.1`;
     
     const signatureSha = CryptoJS.HmacSHA256(signatureOrigin, API_SECRET);
     const signature = CryptoJS.enc.Base64.stringify(signatureSha);
@@ -35,38 +36,84 @@ export class IflytekClient {
     return `${url}?authorization=${encodeURIComponent(authorization)}&date=${encodeURIComponent(date)}&host=${host}`;
   }
 
+  private sendInterval: any = null;
+
   public start() {
     if (this.status === 'recording') return;
     
+    logger.info('Starting ASR session');
+    this.status = 'init';
     this.isFirstFrame = true;
-    this.seq = 0;
+    this.audioDataBuffer = [];
+    this.resultTextTemp.clear();
 
     const url = this.getAuthUrl();
+    logger.info('ASR Auth URL generated', { url: url.replace(API_KEY, '***') });
+    
     this.socket = new WebSocket(url);
     
     this.socket.onopen = () => {
+      logger.info('ASR WebSocket Connected');
       this.startRecording();
+      this.startSendingLoop();
       this.onStart();
     };
     
     this.socket.onmessage = (e) => {
+      // 忽略已经结束的会话的消息
+      if (this.status === 'end') return;
       this.handleMessage(e.data);
     };
     
     this.socket.onerror = (e) => {
-      this.onError(e);
+      logger.error('ASR WebSocket Error', e);
+      if (this.status !== 'end') {
+        this.onError(e);
+      }
       this.stop();
     };
     
-    this.socket.onclose = () => {
+    this.socket.onclose = (e) => {
+      logger.info('ASR WebSocket Closed', { code: e.code, reason: e.reason });
       this.stopRecording();
+      this.stopSendingLoop();
+      const wasRecording = this.status === 'recording';
       this.status = 'end';
-      this.onStop();
+      if (wasRecording) {
+        this.onStop();
+      }
     };
+  }
+
+  private startSendingLoop() {
+      this.stopSendingLoop();
+      // 每20ms发送一次，降低延迟
+      this.sendInterval = setInterval(() => {
+          this.checkAndSend();
+      }, 20);
+  }
+
+  private stopSendingLoop() {
+      if (this.sendInterval) {
+          clearInterval(this.sendInterval);
+          this.sendInterval = null;
+      }
+  }
+
+  private checkAndSend() {
+      const FRAME_SIZE = 1280;
+      while (this.audioDataBuffer.length >= FRAME_SIZE) {
+          const chunk = new Int8Array(this.audioDataBuffer.splice(0, FRAME_SIZE));
+          this.sendFrame(chunk, 1);
+      }
   }
 
   public stop() {
     if (this.status === 'end') return;
+    this.status = 'end'; // 立即标记为结束，阻止更多数据发送
+    
+    // 停止发送循环
+    this.stopSendingLoop();
     
     // Send remaining data
     if (this.audioDataBuffer.length > 0) {
@@ -86,11 +133,12 @@ export class IflytekClient {
         this.socket.close();
       }
       this.stopRecording();
-    }, 1000);
+    }, 1500);
   }
 
   private async startRecording() {
     try {
+      logger.info('Requesting microphone access');
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
         sampleRate: 16000 // Try to request 16k, but browser might ignore
       });
@@ -100,12 +148,19 @@ export class IflytekClient {
           sampleRate: 16000,
           channelCount: 1,
           echoCancellation: true,
-          noiseSuppression: true
+          noiseSuppression: true,
+          autoGainControl: true  // 自动增益控制，提高音量
         }
       });
 
+      logger.info('Microphone access granted', { 
+          sampleRate: this.audioContext.sampleRate,
+          tracks: this.mediaStream.getAudioTracks().length
+      });
+
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      // 使用更小的缓冲区以降低延迟 (512 samples @ 16k = 32ms)
+      this.scriptProcessor = this.audioContext.createScriptProcessor(512, 1, 1);
       
       this.scriptProcessor.onaudioprocess = (e) => {
         if (this.status === 'end') return;
@@ -118,6 +173,7 @@ export class IflytekClient {
       
       this.status = 'recording';
     } catch (e) {
+      logger.error('Microphone access failed', e);
       this.onError(e);
     }
   }
@@ -156,12 +212,7 @@ export class IflytekClient {
       this.audioDataBuffer.push((s >> 8) & 0xFF);
     }
 
-    // Send in chunks of 1280 bytes
-    const FRAME_SIZE = 1280;
-    while (this.audioDataBuffer.length >= FRAME_SIZE) {
-        const chunk = new Int8Array(this.audioDataBuffer.splice(0, FRAME_SIZE));
-        this.sendFrame(chunk, 1);
-    }
+    // Sending is now handled by checkAndSend loop
   }
 
   private transcode(audioData: Float32Array): Float32Array {
@@ -192,57 +243,43 @@ export class IflytekClient {
   }
 
   private isFirstFrame = true;
-  private seq = 0;
+  private resultTextTemp: Map<number, string> = new Map();
 
   private sendFrame(audioData: Int8Array | null, status: number) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
 
-    const frameData: any = {};
+    let frameData: any = {};
     
     if (this.isFirstFrame) {
-        frameData.header = {
-            app_id: APPID,
-            status: 0
-        };
-        frameData.parameter = {
-            iat: {
-                domain: "slm",
+        this.resultTextTemp.clear();
+        frameData = {
+            common: {
+                app_id: APPID
+            },
+            business: {
                 language: "zh_cn",
+                domain: "iat",
                 accent: "mandarin",
-                vinfo: 1,
-                dwa: "wpgs",
-                result: {
-                    encoding: "utf8",
-                    compress: "raw",
-                    format: "json"
-                }
-            }
-        };
-        frameData.payload = {
-            audio: {
-                encoding: "raw",
-                sample_rate: 16000,
-                channels: 1,
-                bit_depth: 16,
+                dwa: "wpgs",      // 动态修正
+                vad_eos: 5000,   // 5秒静音才结束（平衡响应速度和连续说话）
+                nunum: 1,        // 数字转阿拉伯数字
+                ptt: 1           // 添加标点
+            },
+            data: {
                 status: 0,
-                seq: this.seq++,
+                format: "audio/L16;rate=16000",
+                encoding: "raw",
                 audio: audioData ? this.toBase64(audioData.buffer) : ''
             }
         };
+        logger.info('Sending first frame', { business: frameData.business });
         this.isFirstFrame = false;
     } else {
-        frameData.header = {
-            app_id: APPID,
-            status: status
-        };
-        frameData.payload = {
-            audio: {
-                encoding: "raw",
-                sample_rate: 16000,
-                channels: 1,
-                bit_depth: 16,
+        frameData = {
+            data: {
                 status: status,
-                seq: this.seq++,
+                format: "audio/L16;rate=16000",
+                encoding: "raw",
                 audio: audioData ? this.toBase64(audioData.buffer) : ''
             }
         };
@@ -263,64 +300,62 @@ export class IflytekClient {
 
   private handleMessage(data: string) {
     const res = JSON.parse(data);
-    if (res.header && res.header.code !== 0) {
-      this.onError(`Error: ${res.header.code} ${res.header.message}`);
-      return;
-    }
-    if (res.code !== undefined && res.code !== 0) {
+    
+    if (res.code !== 0) {
+      // 10165 是会话句柄失效，通常发生在会话结束后，可以忽略
+      if (res.code === 10165) {
+        logger.warn('ASR Session expired (10165)', res);
+        return;
+      }
+      logger.error('ASR Error Response', res);
       this.onError(`Error: ${res.code} ${res.message}`);
       return;
     }
     
-    if (res.payload && res.payload.result) {
-      const result = res.payload.result;
-      const text = this.decodeText(result.text);
-      const isFinal = result.status === 2;
-      
-      // Handle wpgs (dynamic correction)
-      // If pgs is 'rpl', we might need to replace previous text.
-      // For simplicity, we just emit the current text segment.
-      // The user of this class should accumulate or handle display.
-      // Wait, if wpgs is on, the text returned might be a replacement.
-      // Let's just return the raw text and let the UI handle it?
-      // Or better, just return the text from this segment.
-      
-      // Actually, the `text` field contains the recognized text.
-      // If `pgs` is 'rpl', it means we should replace the last `rg` segments.
-      // This is complex for a simple demo.
-      // Let's try to just append for now, or handle simple accumulation.
-      
-      // The doc says:
-      // ws: array of words.
-      // We can reconstruct the sentence.
-      
-      this.onTextChange(text, isFinal);
-    }
-  }
-
-  private decodeText(base64Text: string): string {
-      try {
-          const binaryString = atob(base64Text);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-          }
-          const decoder = new TextDecoder('utf-8');
-          const jsonStr = decoder.decode(bytes);
-          
-          const json = JSON.parse(jsonStr);
-          let str = '';
-          if (json.ws) {
-              json.ws.forEach((ws: any) => {
-                  ws.cw.forEach((cw: any) => {
-                      str += cw.w;
-                  });
-              });
-          }
-          return str;
-      } catch (e) {
-          return '';
+    if (res.data && res.data.result) {
+      const result = res.data.result;
+      let text = "";
+      if (result.ws) {
+        result.ws.forEach((ws: any) => {
+            ws.cw.forEach((cw: any) => {
+                text += cw.w;
+            });
+        });
       }
+      
+      // Handle wpgs logic
+      const sn = result.sn;
+      const pgs = result.pgs;
+      const rg = result.rg; // [start, end]
+
+      if (pgs === 'rpl') {
+          // Replace range
+          const [start, end] = rg;
+          for (let i = start; i <= end; i++) {
+              this.resultTextTemp.delete(i);
+          }
+      }
+      
+      this.resultTextTemp.set(sn, text);
+
+      // Reconstruct full text
+      let fullText = "";
+      const sortedKeys = Array.from(this.resultTextTemp.keys()).sort((a, b) => a - b);
+      for (const key of sortedKeys) {
+          fullText += this.resultTextTemp.get(key);
+      }
+
+      // status 2 means end of speech
+      const isFinal = res.data.status === 2;
+      
+      if (text) {
+          logger.data('ASR Text Received', { text, fullText, pgs, sn, rg, isFinal });
+      }
+      
+      this.onTextChange(fullText, isFinal);
+    } else {
+        logger.data('ASR Response (No Result)', res);
+    }
   }
 }
 

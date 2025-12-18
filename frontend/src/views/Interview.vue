@@ -89,6 +89,12 @@
             </el-select>
           </div>
         </div>
+
+        <div class="input-preview" v-if="currentInput || isListening">
+          <p v-if="currentInput">{{ currentInput }}<span class="cursor" v-if="isListening"></span></p>
+          <p v-else class="placeholder">正在聆听...<span class="cursor"></span></p>
+        </div>
+
         <div class="action-buttons">
           <el-button type="warning" circle size="large" @click="handleReset">
             <el-icon><RefreshRight /></el-icon>
@@ -117,10 +123,11 @@ import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Camera, Microphone, Check, Loading, DataLine, RefreshRight, Setting } from '@element-plus/icons-vue'
 import { interviewState, resetInterviewState } from '../store/interviewState'
+import { IflytekClient, IflytekTTSClient } from '../utils/iflytek'
 import aiAvatar from '../assets/ai_interviewer.png'
 import { userState } from '../store/userState'
-import { IflytekClient, IflytekTTSClient } from '../utils/iflytek'
 import { ElMessage } from 'element-plus'
+import { logger } from '../utils/logger'
 
 // AI Avatar is imported from assets
 // const aiAvatar = 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80'
@@ -128,6 +135,7 @@ import { ElMessage } from 'element-plus'
 const router = useRouter()
 const isSpeaking = ref(false)
 const isListening = ref(false)
+const isSubmitting = ref(false)
 const isProcessing = ref(false)
 const currentInput = ref('')
 const userVideoRef = ref<HTMLVideoElement | null>(null)
@@ -263,46 +271,35 @@ const initSpeech = () => {
   // Initialize Speech Recognition (iFlyTek)
   recognition = new IflytekClient()
   
-  recognition.onTextChange = (text: string, isFinal: boolean) => {
-    if (text) {
-      // iFlyTek returns partial text or final text. 
-      // Since we don't have "interim" vs "final" accumulation logic easily without complex diffing,
-      // and the simple client I wrote just emits text segments.
-      // If isFinal is true, it's a segment.
-      // If isFinal is false, it might be partial.
-      // My IflytekClient implementation emits text.
-      // Let's assume it emits the full text of the current sentence or segment.
-      // Actually, my implementation in `iflytek.ts` emits `text` from `result.text`.
-      // If `pgs` is enabled, it might be complex.
-      // But let's just append for now.
-      
-      // Wait, if I just append, I might get duplicates if I don't handle partials correctly.
-      // But my `IflytekClient` implementation:
-      // `this.onTextChange(text, isFinal);`
-      // And `text` comes from `decodeText`.
-      // If `status` is 2 (final), it's definitely a committed segment.
-      // If `status` is 0 or 1, it's partial.
-      
-      // For simplicity in this integration:
-      // If it's a final result (isFinal=true), append to currentInput.
-      // If it's partial, maybe show it?
-      // But `currentInput` is v-model.
-      
-      // Let's just append if isFinal is true for now to be safe.
-      if (isFinal) {
-        currentInput.value += text
-      }
+  let previousInput = ''
+
+  recognition.onTextChange = (text: string) => {
+    logger.info('ASR Text Update', { text, isSubmitting: isSubmitting.value })
+    if (!isSubmitting.value) {
+      // text is now the full text of the current speech session
+      const newValue = previousInput + text
+      logger.info('Setting currentInput', { newValue, previousInput })
+      currentInput.value = newValue
     }
   }
 
   recognition.onStart = () => { 
+    logger.info('ASR Started', { previousInput: currentInput.value })
     isListening.value = true 
+    previousInput = currentInput.value
     startAnalysisSimulation()
   }
   
   recognition.onStop = () => { 
+    logger.info('ASR Stopped')
     isListening.value = false 
     stopAnalysisSimulation()
+    
+    if (isSubmitting.value) {
+      isSubmitting.value = false
+      return
+    }
+
     // Auto submit if we have input and it was a voice session ending
     if (currentInput.value.trim()) {
       submitAnswer()
@@ -384,6 +381,7 @@ const submitAnswer = async () => {
   if (!currentInput.value) return
   
   if (isListening.value && recognition) {
+    isSubmitting.value = true
     recognition.stop()
   }
 
@@ -838,6 +836,48 @@ onUnmounted(() => {
 @keyframes wave {
   0%, 100% { height: 20%; opacity: 0.5; }
   50% { height: 100%; opacity: 1; }
+}
+
+.input-preview {
+  width: 100%;
+  min-height: 60px;
+  max-height: 120px;
+  overflow-y: auto;
+  background-color: #f5f7fa;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid #e4e7ed;
+  text-align: left;
+}
+
+.input-preview p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #303133;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.input-preview .placeholder {
+  color: #909399;
+  font-style: italic;
+}
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: #409eff;
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* Scrollbar Styling */
